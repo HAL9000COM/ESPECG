@@ -1,0 +1,8 @@
+{
+    "configuration": "FlashFreq=80,UploadSpeed=921600,DebugLevel=none,EraseFlash=none",
+    "board": "esp32:esp32:nodemcu-32s",
+    "programmer": "esptool",
+    "port": "COM4",
+    "sketch": "esp32.ino",
+    "output": "./ArduinoOutput"
+}
