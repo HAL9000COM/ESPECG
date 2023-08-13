@@ -3,3 +3,4 @@ esp32/.vscode/c_cpp_properties.json
 data_analysis/mit-bih-arrhythmia-database-1.0.0/
 data_analysis/mit-bih-arrhythmia-database-1.0.0.zip
 data_analysis/poetry.lock
+data_analysis/tf_data/

@@ -1,10 +1,16 @@
 # %%
 import tensorflow as tf
 import os
+import numpy as np
 
 # %%
-data_path = "mit-bih-arrhythmia-database-1.0.0/tf_data"
-dataset = tf.data.Dataset.load(data_path)
+data_path = "tf_data"
+# load npz
+arrays = np.load(os.path.join(data_path, "data.npz"))
+data = arrays["data"]
+label = arrays["label"]
+# get array from npz
+dataset = tf.data.Dataset.from_tensor_slices((data, label))
 with open(os.path.join(data_path, "label_list.txt"), "r") as f:
     label_list = f.read()
 label_list = eval(label_list)
