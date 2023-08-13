@@ -6,8 +6,18 @@ import tensorflow as tf
 
 # %%
 # Define the path to the parent directory containing the CSV files
-parent_dir = "mit-bih-arrhythmia-database-1.0.0/data"
+DATA_TYPE = "beat"
+SAMPLE_LENGTH = 360
 
+parent_dir = "mit-bih-arrhythmia-database-1.0.0"
+tf_data_save_path = "tf_data"
+
+if DATA_TYPE == "beat":
+    parent_dir = os.path.join(parent_dir, "beat_data")
+    tf_data_save_path = os.path.join(tf_data_save_path, "beat_data")
+elif DATA_TYPE == "rhythm":
+    parent_dir = os.path.join(parent_dir, "rhythm_data")
+    tf_data_save_path = os.path.join(tf_data_save_path, "rhythm_data")
 # get the list of all the CSV files in the parent directory
 dir_list = os.listdir(parent_dir)
 # %%
@@ -31,7 +41,7 @@ for dir in dir_list:
 # %%
 data = tf.keras.utils.pad_sequences(
     data_list,
-    maxlen=3600,
+    maxlen=SAMPLE_LENGTH,
     dtype="int32",
     padding="post",
     truncating="post",
@@ -43,7 +53,7 @@ print(data.shape)
 print(label.shape)
 # %%
 # save as npz
-tf_data_save_path = "tf_data"
+
 if not os.path.exists(tf_data_save_path):
     os.makedirs(tf_data_save_path)
 np.savez_compressed(os.path.join(tf_data_save_path, "data.npz"), data=data, label=label)
