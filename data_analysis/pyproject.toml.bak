@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "ecg"
+version = "0.1.0"
+description = ""
+authors = ["HAL9000COM <f1226942353@icloud.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9,<3.11"
+mypy = "^1.5.0"
+wfdb = "^4.1.2"
+notebook = "^7.0.2"
+tensorflow = "^2.11.0"
+tensorflow-intel = "^2.11.0"
+tensorflow-io-gcs-filesystem = "0.31.0" #0.32.0 no Win wheel
+black = "^23.1.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
