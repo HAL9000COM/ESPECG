@@ -1,6 +1,8 @@
 # %%
 import pandas as pd
 import numpy as np
+import os
+from ray.util.multiprocessing import Pool
 
 
 def translate_annotation(annotation):
@@ -50,21 +52,21 @@ def translate_annotation(annotation):
 
 
 # %%
-def segment_beat(data, anno, sample_rate=360, f1=0.5, f2=0.5):
+def segment_beat(data, anno, sample_rate=360, t1=0.25, t2=0.45):
     """
     segment beat data with beat in in the center
-    input: data, anno, sample_rate, f1, f2
+    input: data, anno, sample_rate, t1, t2
     output: data_list, anno_list
     """
-    f1 = int(f1 * sample_rate)
-    f2 = int(f2 * sample_rate)
+    t1 = int(t1 * sample_rate)
+    t2 = int(t2 * sample_rate)
     data_list = []
     anno_list = []
     for i in range(len(anno)):
         data_list.append(
             data[
-                max(0, anno["Sample #"][i] - f1) : min(
-                    len(data) - 1, anno["Sample #"][i] + f2
+                max(0, anno["Sample #"][i] - t1) : min(
+                    len(data) - 1, anno["Sample #"][i] + t2
                 )
             ]
         )
@@ -72,11 +74,41 @@ def segment_beat(data, anno, sample_rate=360, f1=0.5, f2=0.5):
     return data_list, anno_list
 
 
-# %%
-path = "mit-bih-arrhythmia-database-1.0.0/x_mitdb"
-import os
+def process_data(in_data: list):
+    line, path, save_path, colums_width, data_label, sample_rate = in_data
+    name = str(line)
+    data_path = os.path.join(path, name + ".txt")
+    anno_path = os.path.join(path, name + "_atr.txt")
+    data = pd.read_csv(data_path, sep="\t")
+    data.columns = [column.strip() for column in data.columns]
+    if data_label in data.columns:
+        pass
+    else:
+        return
+    anno = pd.read_fwf(anno_path, widths=colums_width)
+    data_list, anno_list = segment_beat(data, anno, sample_rate)
+    for i in range(len(data_list)):
+        anno_list[i] = anno_list[i].strip()
+        anno_list[i] = translate_annotation(anno_list[i])
+        sub_dir = os.path.join(save_path, anno_list[i])
+        if os.path.exists(sub_dir) is False:
+            os.mkdir(sub_dir)
+        csv_path = os.path.join(sub_dir, name + "_" + str(i) + ".csv")
+        data_list[i][data_label].to_csv(csv_path, index=False)
+        print(csv_path)
 
+
+# %%
+
+colums_width_dict = {"mit-bih-arrhythmia": [12, 9, 6, 5, 5, 5, 4]}
+
+path = "datasets/mit-bih-arrhythmia-database-1.0.0/x_mitdb"
 save_path = "beat_data"
+
+DATA_TYPE = "mit-bih-arrhythmia"
+SAMPLE_RATE = 360
+DATA_LABEL = "MLII"
+
 save_path = os.path.join(path, save_path)
 if os.path.exists(save_path) is False:
     os.mkdir(save_path)
@@ -88,28 +120,20 @@ lines = f.readlines()
 lines = [line.strip() for line in lines]
 
 # %%
-
-for line in lines:
-    name = str(line)
-    data_path = os.path.join(path, name + ".txt")
-    anno_path = os.path.join(path, name + "_at.txt")
-    data = pd.read_csv(data_path, sep="\t")
-    data.columns = [column.strip() for column in data.columns]
-    if "MLII" in data.columns:
-        pass
-    else:
-        continue
-    anno = pd.read_fwf(anno_path, widths=[12, 9, 6, 5, 5, 5, 4])
-    data_list, anno_list = segment_beat(data, anno)
-    for i in range(len(data_list)):
-        anno_list[i] = anno_list[i].strip()
-        anno_list[i] = translate_annotation(anno_list[i])
-        sub_dir = os.path.join(save_path, anno_list[i])
-        if os.path.exists(sub_dir) is False:
-            os.mkdir(sub_dir)
-        csv_path = oscsv_path = os.path.join(sub_dir, name + "_" + str(i) + ".csv")
-        data_list[i]["MLII"].to_csv(csv_path, index=False)
-        print(csv_path)
+in_data = [
+    (
+        line,
+        path + "/txt_data",
+        save_path,
+        colums_width_dict[DATA_TYPE],
+        DATA_LABEL,
+        SAMPLE_RATE,
+    )
+    for line in lines
+]
+p = Pool()
+p.map(process_data, in_data)
+p.close()
 
 # %%
 # %%
