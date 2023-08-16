@@ -4,7 +4,7 @@ import os
 import numpy as np
 
 # %%
-data_path = "tf_data"
+data_path = "tf_data/beat_data"
 # load npz
 arrays = np.load(os.path.join(data_path, "data.npz"))
 data = arrays["data"]

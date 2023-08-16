@@ -9,7 +9,7 @@ from ray.util.multiprocessing import Pool
 DATA_TYPE = "rhythm"
 SAMPLE_LENGTH = 3600
 
-parent_dir = "mit-bih-arrhythmia-database-1.0.0"
+parent_dir = "datasets/mit-bih-arrhythmia-database-1.0.0"
 tf_data_save_path = "tf_data"
 
 if DATA_TYPE == "beat":
