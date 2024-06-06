@@ -1,23 +1,37 @@
+// esp32 v2.0.17
 #include <SPI.h>
-#include <TFT_eSPI.h> // Hardware-specific library
+#include <TFT_eSPI.h> // Hardware-specific library v2.5.43
 #include <esp_adc_cal.h>
 #include <SD.h>
 #include <FS.h>
-#include <EloquentTinyML.h>
-#include <eloquent_tinyml/tensorflow.h>
 
 #include "ml_model.h"
+#include <tflm_esp32.h>      //v1.0.0
+#include <eloquent_tinyml.h> //v3.0.1
 
 #define N_INPUTS 360
 #define N_OUTPUTS 17
-// in future projects you may need to tweak this value: it's a trial and error process
-#define TENSOR_ARENA_SIZE 80 * 1024
+//  in future projects you may need to tweak this value: it's a trial and error process
+#define ARENA_SIZE 80 * 1024
 
-Eloquent::TinyML::TensorFlow::TensorFlow<N_INPUTS, N_OUTPUTS, TENSOR_ARENA_SIZE> tf;
+Eloquent::TF::Sequential<TF_NUM_OPS, ARENA_SIZE> tf;
 
 // Define custom pin
 const int LO_P = 34;
 const int LO_N = 35;
+
+// Define SD card parameters
+const int SD_CS = 26;
+const int SD_FREQ = 4000000;
+File dataFile;
+
+// display variables
+int x_count = 0;
+int map_data_old = 0;
+
+// logging variables
+uint64_t sample_count = 0;
+bool lead_off = false;
 
 // Define ADC parameters
 const int ADC_PIN = 33;                              // Analog input pin
@@ -25,7 +39,7 @@ const int ref_PIN = 32;                              // Analog input pin
 const adc1_channel_t ecgChannel = ADC1_CHANNEL_5;    // ADC channel
 const adc1_channel_t refChannel = ADC1_CHANNEL_5;    // ADC channel
 const adc_bits_width_t ADC_WIDTH = ADC_WIDTH_BIT_12; // ADC resolution
-const adc_atten_t ADC_ATTEN = ADC_ATTEN_DB_11;       // ADC attenuation
+const adc_atten_t ADC_ATTEN = ADC_ATTEN_DB_12;       // ADC attenuation
 esp_adc_cal_characteristics_t adcCal;
 // #define CUSTOM_ADC // Comment this line to use the default ADC library
 
@@ -40,21 +54,6 @@ portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED; // Timer interrupt mutex
 volatile int buffer[BUFFER_SIZE];
 volatile bool newDataAvailable = false;
 volatile uint8_t bufferIndex = 0;
-
-// display variables
-int x_count = 0;
-int map_data_old = 0;
-
-// logging variables
-uint64_t sample_count = 0;
-bool Lead_off = false;
-
-TFT_eSPI tft = TFT_eSPI(); // Invoke custom library
-
-// Define SD card parameters
-const int SD_CS = 26;
-const int SD_FREQ = 4000000;
-File dataFile;
 
 class CircularBuffer
 {
@@ -138,6 +137,8 @@ void IRAM_ATTR onTimer()
 }
 #endif
 
+TFT_eSPI tft = TFT_eSPI(); // Invoke custom library
+
 void setup()
 {
   Serial.begin(115200);
@@ -146,6 +147,7 @@ void setup()
     // Write the CSV header
     dataFile.println("sample_count,data");
   }
+
   tft.init();
   tft.setRotation(3);
   tft.setTextSize(1);
@@ -153,6 +155,7 @@ void setup()
   tft.setCursor(0, 0);
   tft.setTextColor(TFT_YELLOW, TFT_BLACK);
   tft.println("ESP32 ECG");
+
   pinMode(LO_P, INPUT);
   pinMode(LO_N, INPUT);
   pinMode(ADC_PIN, INPUT);
@@ -170,33 +173,18 @@ void setup()
   // Calibrate ADC
   esp_adc_cal_value_t adcValue = esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN, ADC_WIDTH, ESP_ADC_CAL_VAL_EFUSE_VREF, &adcCal);
   adc1_get_raw(ecgChannel);
-  tf.begin(model_data);
 
   // check if model loaded fine
-  if (!tf.isOk())
-  {
-    Serial.print("ERROR: ");
-    Serial.println(tf.getErrorMessage());
-  }
+  while (!tf.begin(ml_model).isOk())
+    Serial.println(tf.exception.toString());
 }
 
 void loop()
 {
-  if (digitalRead(LO_P) == HIGH)
-  {
-    //Serial.println("LA off");
-    Lead_off = true;
-  }
-  else if (digitalRead(LO_N) == HIGH)
-  {
-   // Serial.println("RA off");
-    Lead_off = true;
-  }
-  else
-  {
-    Lead_off = false;
-  }
 
+  lead_off_detect();
+
+  // Process the data if new data is available
   if (newDataAvailable)
   {
     portENTER_CRITICAL_ISR(&timerMux);
@@ -211,16 +199,20 @@ void loop()
     for (int i = 0; i < bufferIndex_old; i++)
     {
       sample_count++;
-      tft_update(localBuffer[i]);
+      tft_update_line(localBuffer[i]);
       predictBuffer.push(localBuffer[i]);
       if (dataFile)
       {
         sd_write(readADCValue(localBuffer[i]));
       }
     }
+
+    // Make a prediction every time the buffer refreshes
     int prediction = predict();
     Serial.println(prediction);
   }
+
+  // Close the file if the button is pressed
   if (digitalRead(0) == LOW & dataFile)
   {
     Serial.println("Close File");
@@ -228,7 +220,26 @@ void loop()
   }
 }
 
-void tft_update(int data)
+bool lead_off_detect()
+{
+  if (digitalRead(LO_P) == HIGH)
+  {
+    // Serial.println("LA off");
+    lead_off = true;
+  }
+  else if (digitalRead(LO_N) == HIGH)
+  {
+    // Serial.println("RA off");
+    lead_off = true;
+  }
+  else
+  {
+    lead_off = false;
+  }
+  return lead_off
+}
+
+void tft_update_line(int data)
 {
   if (x_count > 320)
   {
@@ -244,6 +255,7 @@ void tft_update(int data)
   x_count++;
   map_data_old = map_data;
 }
+
 void sd_write(int data)
 {
   // Open the CSV file in append mode
@@ -298,7 +310,6 @@ int readADCValue(uint32_t adc_raw)
 
 int predict()
 {
-  float output[N_OUTPUTS];
   int *raw_data = predictBuffer.read();
   float input[N_INPUTS]; // change type to float
   for (int i = 0; i < N_INPUTS; i++)
@@ -306,16 +317,8 @@ int predict()
     input[i] = static_cast<float>(raw_data[i]); // cast to float
   }
 
-  tf.predict(input, output);
-  int max_index = 0;
-  float max_value = 0;
-  for (int i = 0; i < N_OUTPUTS; i++)
-  {
-    if (output[i] > max_value)
-    {
-      max_value = output[i];
-      max_index = i;
-    }
-  }
-  return max_index;
+  while (!tf.predict(input).isOk())
+    Serial.println(tf.exception.toString());
+  Serial.print("Prediction: ");
+  Serial.println(tf.classification);
 }
