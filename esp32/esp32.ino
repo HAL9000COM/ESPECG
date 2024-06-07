@@ -5,7 +5,7 @@
 #include <SD.h>
 #include <FS.h>
 
-#include "ml_model.h"
+#include "ecgmodel.h"
 #include <tflm_esp32.h>      //v1.0.0
 #include <eloquent_tinyml.h> //v3.0.1
 
@@ -139,6 +139,15 @@ void IRAM_ATTR onTimer()
 
 TFT_eSPI tft = TFT_eSPI(); // Invoke custom library
 
+// Function prototypes
+bool lead_off_detect();
+void tft_update_line(int data);
+void sd_write(int data);
+bool openSDFile();
+bool closeSDFile();
+int readADCValue(uint32_t adc_raw);
+int predict();
+
 void setup()
 {
   Serial.begin(115200);
@@ -175,7 +184,7 @@ void setup()
   adc1_get_raw(ecgChannel);
 
   // check if model loaded fine
-  while (!tf.begin(ml_model).isOk())
+  while (!tf.begin(ecgmodel).isOk())
     Serial.println(tf.exception.toString());
 }
 
@@ -236,7 +245,7 @@ bool lead_off_detect()
   {
     lead_off = false;
   }
-  return lead_off
+  return lead_off;
 }
 
 void tft_update_line(int data)
@@ -321,4 +330,5 @@ int predict()
     Serial.println(tf.exception.toString());
   Serial.print("Prediction: ");
   Serial.println(tf.classification);
+  return tf.classification;
 }
