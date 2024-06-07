@@ -1,7 +1,8 @@
 # %%
-import tensorflow as tf
 import os
+
 import numpy as np
+import tensorflow as tf
 
 # %%
 data_path = "tf_data/beat_data"
@@ -9,6 +10,8 @@ data_path = "tf_data/beat_data"
 arrays = np.load(os.path.join(data_path, "data.npz"))
 data = arrays["data"]
 label = arrays["label"]
+# convert label to one-hot
+label = tf.keras.utils.to_categorical(label, num_classes=17)
 # get array from npz
 dataset = tf.data.Dataset.from_tensor_slices((data, label))
 with open(os.path.join(data_path, "label_list.txt"), "r") as f:
@@ -43,25 +46,17 @@ dataset = dataset.cache().batch(batch_size).prefetch(buffer_size=tf.data.AUTOTUN
 model = tf.keras.Sequential(
     [
         tf.keras.layers.InputLayer(input_shape=(360,)),
-        tf.keras.layers.Reshape(target_shape=(360, 1)),
-        tf.keras.layers.Conv1D(filters=32, kernel_size=5, strides=2, activation="relu"),
-        tf.keras.layers.MaxPooling1D(pool_size=2, strides=2),
-        tf.keras.layers.Conv1D(filters=64, kernel_size=5, strides=2, activation="relu"),
-        tf.keras.layers.MaxPooling1D(pool_size=2, strides=2),
-        tf.keras.layers.Conv1D(
-            filters=128, kernel_size=5, strides=2, activation="relu"
-        ),
-        tf.keras.layers.MaxPooling1D(pool_size=2, strides=2),
-        tf.keras.layers.Flatten(),
-        tf.keras.layers.Dense(64, activation="relu"),
-        tf.keras.layers.Dense(17, activation="softmax"),
+        tf.keras.layers.Dense(units=128, activation=tf.keras.layers.PReLU()),
+        tf.keras.layers.Dense(units=64, activation=tf.keras.layers.PReLU()),
+        tf.keras.layers.Dense(units=17, activation="softmax"),
     ]
 )
 
 # Compile the model
 model.compile(
     optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
-    loss=tf.keras.losses.SparseCategoricalCrossentropy(),
+    # loss=tf.keras.losses.SparseCategoricalCrossentropy(),
+    loss=tf.keras.losses.CategoricalCrossentropy(),
     metrics=["accuracy"],
 )
 
@@ -84,17 +79,22 @@ callbacks = [
 model.fit(data_train, epochs=100, validation_data=data_test, callbacks=callbacks)
 
 # %%
+# Save the model
+model.save("model.h5")
+
+# %%
 # draw confusion matrix with percentage
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import seaborn as sns
 from sklearn.metrics import confusion_matrix
-import pandas as pd
-import numpy as np
 
 # get confusion matrix
 y_pred = model.predict(data_train)
 y_pred = np.argmax(y_pred, axis=1)
 y_true = np.concatenate([y for x, y in data_train], axis=0)
+y_true = np.argmax(y_true, axis=1)
 cm = confusion_matrix(y_true, y_pred)
 cm = cm.astype("float") / cm.sum(axis=1)[:, np.newaxis]
 # draw confusion matrix
@@ -107,13 +107,11 @@ plt.yticks(np.arange(17) + 0.5, label_list, rotation=0)
 plt.title("Confusion matrix")
 plt.show()
 # %%
-from tinymlgen import port
+from everywhereml.code_generators.tensorflow import convert_model
 
-c_port = port(model,pretty_print=True, optimize=False)
-print(c_port)
 # %%
-#save model
-model.save("model.h5")
-with open("model.h", "w") as f:
-    f.write(c_port)
+cpp_code = convert_model(model, data, label, model_name="ecgmodel")
+# %%
+with open("../esp32/ecgmodel.h", "w") as f:
+    f.write(cpp_code)
 # %%
